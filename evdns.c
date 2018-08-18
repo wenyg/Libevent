@@ -1217,6 +1217,7 @@ request_parse(u8 *packet, int length, struct evdns_server_port *port, struct soc
 {
 	int j = 0;	/* index into packet */
 	u16 t_;	 /* used by the macros */
+	u32 t32_;
 	char tmp_name[256]; /* used by the macros */
 
 	int i;
@@ -1254,6 +1255,8 @@ request_parse(u8 *packet, int length, struct evdns_server_port *port, struct soc
 		goto err;
 
 	for (i = 0; i < questions; ++i) {
+
+		printf("qeustion\n");
 		u16 type, class;
 		struct evdns_server_question *q;
 		int namelen;
@@ -1269,6 +1272,63 @@ request_parse(u8 *packet, int length, struct evdns_server_port *port, struct soc
 		q->dns_question_class = class;
 		memcpy(q->name, tmp_name, namelen+1);
 		server_req->base.questions[server_req->base.nquestions++] = q;
+	}
+	for (i = 0; i< additional; ++i){
+
+		printf("additonal\n");
+		u8 name;
+		u16 type;
+		u16 payload_size;
+		u8 rcode;
+		u8 edns_version;
+		u16 z;
+		u16 rdatalen;
+	
+		GET8(name);
+		GET16(type);
+		GET16(payload_size);
+		GET8(rcode);
+		GET8(edns_version);
+		GET16(z);
+		GET16(rdatalen);
+		printf("name[%d] type[%d] size[%d] rcode[%d] version[%d] len[%d]\n", 
+				name,type,payload_size,rcode,edns_version,rdatalen);
+		if (rdatalen > 0){
+			u16 op_code;
+			u16 op_len;
+			GET16(op_code);
+			GET16(op_len);
+			if(op_code == 8){
+				printf("CSUBNET\n");
+				u16 family;
+				u8 source_netmask;
+				u8 scope_netmask;
+				GET16(family);
+				GET8(source_netmask);
+				GET8(scope_netmask);
+				if (family == TYPE_A){
+					u8 ip[4] = {0};
+					int ip_len = (source_netmask + 7) / 8;
+					memcpy(&ip, packet + j, ip_len);
+					j += ip_len;
+					printf("subnet:[%d.%d.%d.%d]\n", ip[0], ip[1],ip[2],ip[3]);
+				} else if (family == TYPE_AAAA){
+					printf("ipv6 subnet\n");
+					u8 ip[16] = {0};
+					int ip_len = (source_netmask + 7) / 8;
+					memcpy(&ip, packet, ip_len);
+					j += ip_len;
+				} else {
+					printf("unexcept\n");
+					goto err;
+				}
+				
+			} else {
+				printf("other type [%d]\n", op_code);
+				j += op_len;
+			}
+		}
+
 	}
 
 	/* Ignore answers, authority, and additional. */
